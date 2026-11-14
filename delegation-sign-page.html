@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tanda Tangan Delegasi Payout — make.fun</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0b0f0c; color: #e8e8e8; margin: 0; padding: 16px; }
+  .card { max-width: 560px; margin: 0 auto; background: #10160f; border: 1px solid #1e3a1e; border-radius: 12px; padding: 18px; }
+  h1 { color: #00ff41; font-size: 20px; margin: 0 0 8px; }
+  p { line-height: 1.5; font-size: 15px; }
+  .msg { background: #000; color: #f2f2f2; font-family: monospace; font-size: 12px; padding: 12px; border-radius: 8px; word-break: break-all; white-space: pre-wrap; }
+  button { display: block; width: 100%; padding: 14px; margin: 10px 0; font-size: 16px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; }
+  #connectBtn { background: #00ff41; color: #000; }
+  #signBtn { background: #1f6feb; color: #fff; }
+  #copyBtn { background: #333; color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .ok { color: #00ff41; font-weight: 700; }
+  .warn { color: #ffb020; font-weight: 700; }
+  .err { color: #ff5f56; font-weight: 700; }
+  #sig { width: 100%; min-height: 72px; background: #000; color: #f2f2f2; font-family: monospace; font-size: 12px; border: 1px solid #333; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+  .small { font-size: 13px; color: #aaa; }
+  .step { font-weight: 700; color: #00ff41; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Tanda Tangan Delegasi Payout — make.fun</h1>
+  <p>Halaman ini <b>HANYA</b> meminta tanda tangan untuk pesan delegasi di bawah. <b>Bukan transaksi, bukan transfer, dan tidak pernah meminta seed phrase atau private key.</b> Tanda tangan ini mengunci payout akun make.fun <b>@spy26</b> ke wallet utama Anda, supaya hadiah langsung dibayar ke wallet itu.</p>
+
+  <p class="step">Pesan yang akan ditandatangani (periksa isinya sebelum tanda tangan):</p>
+  <div class="msg" id="msgBox"></div>
+
+  <p class="step">Langkah 1 — Hubungkan wallet</p>
+  <p class="small">Buka halaman ini <b>di dalam browser Trust Wallet</b> (ikon kompas/browser di aplikasi Trust Wallet, lalu tempel link halaman ini). Wallet yang terhubung <b>harus</b> wallet utama:</p>
+  <p class="msg">HaGJ6D4sgXQrYp1RkwkRM6gRN9AhoXEi26BKYiWmsZnC</p>
+  <button id="connectBtn">1. Hubungkan Trust Wallet</button>
+  <p id="connStatus">Belum terhubung.</p>
+
+  <p class="step">Langkah 2 — Tanda tangani pesan</p>
+  <button id="signBtn" disabled>2. Tanda Tangani Pesan</button>
+  <p id="signStatus"></p>
+
+  <p class="step">Langkah 3 — Salin tanda tangan</p>
+  <textarea id="sig" readonly placeholder="Tanda tangan (base58) akan muncul di sini setelah Anda menandatangani."></textarea>
+  <button id="copyBtn" disabled>Salin Tanda Tangan</button>
+  <p class="small">Kirim tanda tangan ini ke ACE (chat). ACE akan mendaftarkannya ke make.fun. <b>Jangan pernah</b> kirim seed phrase atau private key ke siapa pun.</p>
+  <p class="small" id="errBox"></p>
+</div>
+
+<script>
+(function () {
+  var MESSAGE = "make.fun delegation v1; Domain: make.fun; Payout: HaGJ6D4sgXQrYp1RkwkRM6gRN9AhoXEi26BKYiWmsZnC; Agent: Aqv3ymbYEN6hy2VRHXgdP1FXPMLbFvz9k6TWcczfkKoz; Competitions: *; Nonce: ea24a09794a85daff2c3a2a1ed4d67a1; Issued At: 2026-11-14T13:22:52.647Z; Expiration Time: 2027-02-12T13:22:52.647Z";
+  var EXPECTED = "HaGJ6D4sgXQrYp1RkwkRM6gRN9AhoXEi26BKYiWmsZnC";
+  document.getElementById("msgBox").textContent = MESSAGE;
+
+  var ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  function base58Encode(bytes) {
+    var digits = [0];
+    for (var i = 0; i < bytes.length; i++) {
+      var carry = bytes[i];
+      for (var j = 0; j < digits.length; j++) {
+        carry += digits[j] << 8;
+        digits[j] = carry % 58;
+        carry = (carry / 58) | 0;
+      }
+      while (carry > 0) { digits.push(carry % 58); carry = (carry / 58) | 0; }
+    }
+    var out = "";
+    for (var k = 0; k < bytes.length && bytes[k] === 0; k++) out += ALPHABET[0];
+    for (var m = digits.length - 1; m >= 0; m--) out += ALPHABET[digits[m]];
+    return out;
+  }
+
+  var provider = null;
+  function findProvider() {
+    if (window.solana) return window.solana;
+    if (window.trustwallet && window.trustwallet.solana) return window.trustwallet.solana;
+    return null;
+  }
+  function fail(msg) {
+    var el = document.getElementById("errBox");
+    el.innerHTML = '<span class="err">' + msg + "</span>";
+  }
+
+  document.getElementById("connectBtn").addEventListener("click", async function () {
+    provider = findProvider();
+    if (!provider) {
+      fail("Wallet Solana tidak ditemukan. Halaman ini harus dibuka di dalam browser Trust Wallet (ikon kompas di aplikasi Trust Wallet), bukan di Chrome/Safari biasa.");
+      return;
+    }
+    try {
+      var res = await provider.connect();
+      var pk = res && res.publicKey ? res.publicKey.toString() : (provider.publicKey && provider.publicKey.toString());
+      var st = document.getElementById("connStatus");
+      if (!pk) { fail("Tidak bisa membaca alamat wallet yang terhubung."); return; }
+      if (pk !== EXPECTED) {
+        st.innerHTML = '<span class="warn">Wallet terhubung: ' + pk + "<br>INI BUKAN wallet utama. Tanda tangan HARUS dari wallet utama di atas. Ganti wallet di Trust Wallet, lalu hubungkan lagi.</span>";
+        document.getElementById("signBtn").disabled = true;
+        return;
+      }
+      st.innerHTML = '<span class="ok">Terhubung ke wallet utama yang benar: ' + pk + "</span>";
+      document.getElementById("signBtn").disabled = false;
+    } catch (e) {
+      fail("Gagal menghubungkan wallet: " + (e && e.message ? e.message : e));
+    }
+  });
+
+  document.getElementById("signBtn").addEventListener("click", async function () {
+    if (!provider) { fail("Hubungkan wallet dulu."); return; }
+    document.getElementById("signStatus").textContent = "Menunggu persetujuan di Trust Wallet — periksa isi pesannya sebelum mengetuk tanda tangan.";
+    try {
+      var encoded = new TextEncoder().encode(MESSAGE);
+      var out = await provider.signMessage(encoded);
+      var sigBytes = out && out.signature ? out.signature : out;
+      if (!sigBytes || !sigBytes.length) { fail("Trust Wallet tidak mengembalikan tanda tangan."); return; }
+      var sig = base58Encode(sigBytes);
+      document.getElementById("sig").value = sig;
+      document.getElementById("signStatus").innerHTML = '<span class="ok">Berhasil ditandatangani. Salin tanda tangan di bawah dan kirim ke ACE.</span>';
+      document.getElementById("copyBtn").disabled = false;
+    } catch (e) {
+      fail("Penandatanganan dibatalkan atau gagal: " + (e && e.message ? e.message : e));
+    }
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", function () {
+    var ta = document.getElementById("sig");
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).catch(function () {});
+    }
+    document.getElementById("copyBtn").textContent = "Disalin!";
+  });
+})();
+</script>
+</body>
+</html>
